@@ -799,6 +799,16 @@ unsigned int accDiff;
 int8_t accHistory[ACCEL_HISTORY_LEN*3];
 /// Index in accelerometer history of the last sample
 volatile uint8_t accHistoryIdx;
+/// History of high resolution accelerometer readings
+#define ACC_HR_HISTORY_LEN 13  // actual frequency is ~11.7 Hz
+#define ACC_HR_ARRAY_LEN (ACC_HR_HISTORY_LEN*3)
+int16_t acc_hr_history[ACC_HR_ARRAY_LEN];
+volatile uint8_t acc_hr_history_index;
+/// History of magnetometer readings
+#define MAG_HISTORY_LEN 13
+#define MAG_ARRAY_LEN (MAG_HISTORY_LEN*3)
+int16_t mag_history[MAG_ARRAY_LEN];
+volatile uint8_t mag_history_index;
 /// How many samples have we been recording a gesture for? If 0, we're not recoding a gesture
 volatile uint8_t accGestureCount;
 /// How many samples have been recorded? Used when putting data into an array
@@ -1222,6 +1232,11 @@ void peripheralPollHandler() {
       if (mag.z>magmax.z) magmax.z=mag.z;
       bangleTasks |= JSBT_MAG_DATA;
       jshHadEvent();
+
+      mag_history[mag_history_index] = mag.x;
+      mag_history[mag_history_index + 1] = mag.y;
+      mag_history[mag_history_index + 2] = mag.z;
+      mag_history_index = (mag_history_index + 3) % MAG_ARRAY_LEN;
     }
   }
 #ifdef ACCEL_I2C
@@ -1327,6 +1342,10 @@ void peripheralPollHandler() {
     accHistory[accHistoryIdx  ] = clipi8(newx>>7);
     accHistory[accHistoryIdx+1] = clipi8(newy>>7);
     accHistory[accHistoryIdx+2] = clipi8(newz>>7);
+    acc_hr_history[acc_hr_history_index] = newx;
+    acc_hr_history[acc_hr_history_index + 1] = newy;
+    acc_hr_history[acc_hr_history_index + 2] = newz;
+    acc_hr_history_index = (acc_hr_history_index + 3) % ACC_HR_ARRAY_LEN;
     // Power saving
     if (bangleFlags & JSBF_POWER_SAVE) {
       if (accDiff > POWER_SAVE_MIN_ACCEL) {
@@ -1480,6 +1499,75 @@ void peripheralPollHandler() {
   // we're done, ensure we clear I2C flag
   i2cBusy = false;
 }
+
+
+void _create_array(int index, int16_t* array, int end_index, JsVar** out_array, int ARRAY_LEN);
+
+/*JSON{
+    "type" : "staticmethod",
+    "class" : "Bangle",
+    "name" : "getPollHistory",
+    "generate" : "jswrap_banglejs_getPollHistory",
+    "params" : [
+      ["accIdx","int",""],
+      ["magIdx","int",""]
+    ],
+    "return" : ["JsVar",""],
+    "ifdef" : "BANGLEJS"
+}*/
+JsVar* jswrap_banglejs_getPollHistory(int acc_index, int mag_index) {
+  if (!(
+    (acc_index == -1 || (0 <= acc_index && acc_index < ACC_HR_ARRAY_LEN && (acc_index % 3) == 0)) &&
+    (mag_index == -1 || (0 <= mag_index && mag_index < MAG_ARRAY_LEN && (mag_index % 3) == 0))
+  )) {
+    return 0;
+  }
+
+  JsVar* o = jsvNewObject();
+  if (o) {
+    int end_index;
+    JsVar* array;
+
+    if (acc_index != -1) {
+      end_index = acc_hr_history_index;
+      array = 0;
+      _create_array(acc_index, acc_hr_history, end_index, &array, ACC_HR_ARRAY_LEN);
+      if (array) {
+        jsvObjectSetChildAndUnLock(o, "acc", array);
+        jsvObjectSetChildAndUnLock(o, "accIdx", jsvNewFromInteger(end_index));
+      }
+    }
+
+    if (mag_index != -1) {
+      end_index = mag_history_index;
+      array = 0;
+      _create_array(mag_index, mag_history, end_index, &array, MAG_ARRAY_LEN);
+      if (array) {
+        jsvObjectSetChildAndUnLock(o, "mag", array);
+        jsvObjectSetChildAndUnLock(o, "magIdx", jsvNewFromInteger(end_index));
+      }
+    }
+  }
+
+  return o;
+}
+
+void _create_array(int index, int16_t* array, int end_index, JsVar** out_array, int ARRAY_LEN) {
+  *out_array = jsvNewEmptyArray();
+  if (*out_array) {
+    while (index != end_index) {
+      JsVar* o = jsvNewObject();
+      if (o) {
+        jsvObjectSetChildAndUnLock(o, "x", jsvNewFromInteger(array[index]));
+        jsvObjectSetChildAndUnLock(o, "y", jsvNewFromInteger(array[index + 1]));
+        jsvObjectSetChildAndUnLock(o, "z", jsvNewFromInteger(array[index + 2]));
+        jsvArrayPushAndUnLock(*out_array, o);
+      }
+      index = (index + 3) % ARRAY_LEN;
+    }
+  }
+}
+
 
 #ifdef HEARTRATE
 static void hrmHandler(int ppgValue) {
