@@ -62,7 +62,9 @@ info = {
      'JSMODULESOURCES += libs/js/banglejs/locale.min.js',
      'NRF_BL_DFU_INSECURE=1',
      'LINKER_BOOTLOADER=targetlibs/nrf5x_12/nrf5x_linkers/banglejs_dfu.ld',
-     'LINKER_ESPRUINO=targetlibs/nrf5x_12/nrf5x_linkers/banglejs_espruino.ld'
+     'LINKER_ESPRUINO=targetlibs/nrf5x_12/nrf5x_linkers/banglejs_espruino.ld',
+     'INCLUDE += -I$(ROOT)/libs/rack',
+     'WRAPPERSOURCES += libs/rack/jswrap_rack.c',
    ]
  }
 };
