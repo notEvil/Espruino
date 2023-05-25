@@ -51,6 +51,8 @@ info = {
      'DEFINES += -DESPR_DCDC_ENABLE=1', # Use DC/DC converter
      'ESPR_BLUETOOTH_ANCS=1', # Enable ANCS (Apple notifications) support
      'DEFINES += -DSPIFLASH_SLEEP_CMD', # SPI flash needs to be explicitly slept and woken up
+     'DEFINES += -DSPIFLASH_READ2X', # Read SPI flash at 2x speed using MISO and MOSI for IO
+     'DEFINES += -DESPR_JSVAR_FLASH_BUFFER_SIZE=32', # The buffer size we use when executing/iterating over data in flash memory (default 16). Should be set based on benchmarks.
      'DEFINES += -DAPP_TIMER_OP_QUEUE_SIZE=6', # Bangle.js accelerometer poll handler needs something else in queue size
      'DEFINES+=-DBLUETOOTH_NAME_PREFIX=\'"Bangle.js"\'',
      'DEFINES+=-DCUSTOM_GETBATTERY=jswrap_banglejs_getBattery',
@@ -66,8 +68,12 @@ info = {
      'WRAPPERSOURCES += libs/graphics/jswrap_font_12x20.c',
      'SOURCES += libs/misc/nmea.c',
      'SOURCES += libs/misc/stepcount.c',
-     'SOURCES += libs/misc/heartrate.c',
-     'SOURCES += libs/misc/hrm_vc31.c',
+     'SOURCES += libs/misc/hrm_vc31.c',     
+# Standard open-source heart rate algorithm:
+#    'SOURCES += libs/misc/heartrate.c',
+# Proprietary heart rate algorithm:
+     'SOURCES += libs/misc/heartrate_vc31_binary.c', 'DEFINES += -DHEARTRATE_VC31_BINARY=1', 'PRECOMPILED_OBJS += libs/misc/vc31_binary/algo.o libs/misc/vc31_binary/modle5_10.o libs/misc/vc31_binary/modle5_11.o libs/misc/vc31_binary/modle5_12.o libs/misc/vc31_binary/modle5_13.o libs/misc/vc31_binary/modle5_14.o libs/misc/vc31_binary/modle5_15.o libs/misc/vc31_binary/modle5_16.o libs/misc/vc31_binary/modle5_17.o libs/misc/vc31_binary/modle5_18.o libs/misc/vc31_binary/modle5_1.o libs/misc/vc31_binary/modle5_2.o libs/misc/vc31_binary/modle5_3.o libs/misc/vc31_binary/modle5_4.o libs/misc/vc31_binary/modle5_5.o libs/misc/vc31_binary/modle5_6.o libs/misc/vc31_binary/modle5_7.o libs/misc/vc31_binary/modle5_8.o libs/misc/vc31_binary/modle5_9.o',
+# ------------------------
      'SOURCES += libs/misc/unistroke.c',
      'WRAPPERSOURCES += libs/misc/jswrap_unistroke.c',
      'DEFINES += -DESPR_BANGLE_UNISTROKE=1',
@@ -128,7 +134,7 @@ devices = {
             'pin_bl' : 'D8',
           },
   'TOUCH' : {
-            'device' : 'CTS816S', 'addr' : 0x15,
+            'device' : 'CST816S', 'addr' : 0x15,
             'pin_sda' : 'D33',
             'pin_scl' : 'D34',
             'pin_rst' : 'D35',

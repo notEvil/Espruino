@@ -17,6 +17,11 @@
 #include "jsvar.h"
 #ifdef SPIFLASH_BASE
 #include "jshardware.h"
+
+#ifndef ESPR_JSVAR_FLASH_BUFFER_SIZE
+#define ESPR_JSVAR_FLASH_BUFFER_SIZE 16
+#endif
+
 #endif
 
 /// Callback function to be used with jsvIterateCallback
@@ -26,11 +31,15 @@ typedef void (*jsvIterateBufferCallbackFn)(unsigned char *data, unsigned int len
 
 
 
-/** Iterate over the contents of var, calling callback for each. Contents may be:
- *   * numeric -> output
- *   * a string -> output each character
- *   * array/arraybuffer -> call itself on each element
- *   * object -> call itself object.count times, on object.data
+/**
+ Iterate over the contents of the content of a variable, calling callback for each.
+ Used in `.write` methods, E.toString/toUint8Array and others
+ Contents may be:
+ * numeric -> output
+ * a string -> output each character
+ * array/arraybuffer -> call itself on each element
+ * {data:..., count:...} -> call itself object.count times, on object.data
+ * {callback:...} -> call the given function, call itself on return value
  */
 bool jsvIterateCallback(JsVar *var, jsvIterateCallbackFn callback, void *callbackData);
 
@@ -55,7 +64,7 @@ typedef struct JsvStringIterator {
   JsVar *var; ///< current StringExt we're looking at
   char  *ptr; ///< a pointer to string data
 #ifdef SPIFLASH_BASE // when using flash strings, we need somewhere to put the data
-  char flashStringBuffer[16];
+  char flashStringBuffer[ESPR_JSVAR_FLASH_BUFFER_SIZE];
 #endif
 } JsvStringIterator;
 
@@ -235,7 +244,7 @@ void jsvArrayBufferIteratorClone(JsvArrayBufferIterator *dstit, JsvArrayBufferIt
  * which allows this, but is slower. */
 JsVar *jsvArrayBufferIteratorGetValue(JsvArrayBufferIterator *it);
 JsVar *jsvArrayBufferIteratorGetValueAndRewind(JsvArrayBufferIterator *it);
-JsVarInt jsvArrayBufferIteratorGetIntegerValue(JsvArrayBufferIterator *it); 
+JsVarInt jsvArrayBufferIteratorGetIntegerValue(JsvArrayBufferIterator *it);
 JsVarFloat jsvArrayBufferIteratorGetFloatValue(JsvArrayBufferIterator *it);
 void   jsvArrayBufferIteratorSetValue(JsvArrayBufferIterator *it, JsVar *value);
 void   jsvArrayBufferIteratorSetValueAndRewind(JsvArrayBufferIterator *it, JsVar *value);

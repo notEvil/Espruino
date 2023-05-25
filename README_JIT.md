@@ -14,25 +14,33 @@ Works:
 * `for (;;)` loops
 * `if ()`
 * `i++` / `++i`
+* `i+=`
+* ternary operators
 * `~i`/`!i`/`+i`/`-i`
-* On the whole functions that can't be JITed will produce a message on the console and will be treated as normal functions.
 * Function arguments
+* `var/const/let` (`const`/`let` scoping does not work at the moment)
+* On the whole functions that can't be JITed will produce a message on the console and will be treated as normal functions.
+* Short-circuit execution (`&&`/`||`)
+* Array `[]` and Object `{}` declarations
 
 Doesn't work:
 
 * Everything else
-* `var/const/let`
 
 Performance:
 
 * When calling a JIT function, we use existing FunctionCall code to set up args and an execution scope (so args can be passed in)
-* Right now, variables are referenced at the start just once and stored on the stack
+* Variables are referenced at the start just once and stored on the stack
   * We could also maybe extend it to allow caching of constant field access, for instance 'console.log'
 * Built-in functions could be called directly, which would be a TON faster
 * Peephole optimisation could still be added (eg. removing `push r0, pop r0`) but this is the least of our worries
 * Stuff is in place to allow ints to be stored on the stack and converted when needed. This could maybe allow us to keep some vars as ints.
-* When a function is called we load up the address as a 32 bit literal each time. We could maybe have a constant pool?
+* When a function is called we load up the address as a 32 bit literal each time. We could maybe have a constant pool or local stub functions?
 * When we emit code, we just use StringAppend which can be very slow. We should use an iterator (it's an easy win for compile performance)
+
+Possible improvements:
+
+* We always output a `return undefined` even if the function has already returned
 
 
 ## Testing
@@ -164,6 +172,25 @@ jit(); // prints 0,1,2,3,4
 function jit() {"jit";for (var i=0;i<5;++i) print(i);}
 jit(); // prints 0,1,2,3,4
 
+/*
+// WHILE is broken, so disabled for now
+
+function jit() {"jit";while (0) {}}
+jit();
+E.setFlags({jitDebug:1});
+function jit() {"jit";while (1) return 42;}
+jit()==42
+function jit() {"jit";while (0) return 0;return 42;}
+jit()==42
+
+function jit() {"jit";while (i--) j++;}
+i=1;j=0;jit();  // broken: Uncaught Error: Unable to assign value to non-reference ?
+function jit() {"jit";while (0) print(5); print("Done"); } jit(); // ok
+function jit() {"jit";while (1) print(5); print("Done"); } jit(); // Expecting a function to call, got Object (should print '5' forever) 
+*/
+
+function jit() {"jit";do { print(i); } while (i--);}
+i=5;jit(); // prints 5,4,3,2,1,0
 
 function nojit() {for (i=0;i<1000;i=i+1);}
 function jit() {"jit";for (i=0;i<1000;i=i+1);}
@@ -179,9 +206,32 @@ jit()==42
 function jit() {"jit";a.c();}
 jit(); // prints 'hello {b:42,...}'
 
+a=Uint8Array([42])
+function jit(){"jit";var i=0;return a[i];}
+jit()==42
+
 function jit(a,b) {'jit';return a+"Hello world"+b;}
 jit(1,2)=="1Hello world2"
 
+function jit() {'jit';return [1,2,1+2,"Hello","World"];}
+jit()=="1,2,3,Hello,World"
+
+function jit() {'jit';return {a:42,b:10,12:5};}
+JSON.stringify(jit()) == '{"a":42,"b":10,"12":5}'
+
+E.setFlags({jitDebug:1});
+function jit() {'jit';return 0&&2;}
+jit()==0
+function jit() {'jit';return 3&&2;}
+jit()==2
+function jit() {'jit';return 0||2;}
+jit()==2
+function jit() {'jit';return 3||2;}
+jit()==3
+
+
+jit = {a:42, jit:function(){'jit';return this.a;}}
+jit.jit()==42
 
 function nojit() {
   for (var i=0;i<10000;i++) {
@@ -197,6 +247,16 @@ function jit() {"jit";
 }
 t=getTime();nojit();getTime()-t // 6.96
 t=getTime();jit();getTime()-t   // 2.02
+
+
+t=getTime();function jit() {"jit";
+  for (var i=0;i<10;i++) {
+    print("Start");
+    digitalWrite(LED,1);
+    digitalWrite(LED,0);
+    print("Stop");
+  }
+};print("JIT compile time", getTime()-t,"s")
 ```
 
 Run JIT on ARM and then disassemble:

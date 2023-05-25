@@ -23,11 +23,11 @@
 
 #include "bluetooth.h"
 
-#define BLE_READ_EVENT				JS_EVENT_PREFIX"blerv"
-#define BLE_CONNECT_EVENT			JS_EVENT_PREFIX"connect"
-#define BLE_DISCONNECT_EVENT		JS_EVENT_PREFIX"disconnect"
+#define BLE_READ_EVENT        JS_EVENT_PREFIX"blerv"
+#define BLE_CONNECT_EVENT      JS_EVENT_PREFIX"connect"
+#define BLE_DISCONNECT_EVENT    JS_EVENT_PREFIX"disconnect"
 
-#define BLE_CHAR_VALUE			"BLE_CHAR_V"
+#define BLE_CHAR_VALUE      "BLE_CHAR_V"
 
 typedef enum{
   ESP_BLE_DEBUG_GAP = 1,
@@ -45,7 +45,6 @@ esp_err_t deinitBluedroid();
 esp_err_t registerCallbacks();
 esp_err_t setMtu();
 
-JsVar *bda2JsVarString(uint8_t *ble_adv);
 
 void ESP32_setBLE_Debug(int level);
 void jsWarnGattsEvent(esp_gatts_cb_event_t event,esp_gatt_if_t gatts_if);
@@ -64,5 +63,6 @@ void espbtuuid_TO_bleuuid(esp_bt_uuid_t esp_uuid, ble_uuid_t *ble_uuid);
 void bleuuid_To_uuid128(ble_uuid_t ble_uuid, uint8_t *ble128);
 bool espbtuuid_equal(esp_bt_uuid_t a, esp_bt_uuid_t b); ///< Equality check
 void bleaddr_TO_espbtaddr(ble_gap_addr_t ble_addr, esp_bd_addr_t remote_bda, esp_ble_addr_type_t *remote_bda_type);
+void espbtaddr_TO_bleaddr(esp_bd_addr_t remote_bda, esp_ble_addr_type_t remote_bda_type, ble_gap_addr_t *ble_addr);
 
 #endif /* ESP32_BLUETOOTH_UTILS_H_ */

@@ -17,6 +17,7 @@
 
 /**
  Iterate over the contents of the content of a variable, calling callback for each.
+ Used in `.write` methods, E.toString/toUint8Array and others
  Contents may be:
  * numeric -> output
  * a string -> output each character
@@ -36,7 +37,7 @@ bool jsvIterateCallback(
   }
   // Handle the data being an object.
   else if (jsvIsObject(data)) {
-    JsVar *callbackVar = jsvObjectGetChild(data, "callback", 0);
+    JsVar *callbackVar = jsvObjectGetChildIfExists(data, "callback");
     if (jsvIsFunction(callbackVar)) {
       JsVar *result = jspExecuteFunction(callbackVar,0,0,NULL);
       jsvUnLock(callbackVar);
@@ -48,8 +49,8 @@ bool jsvIterateCallback(
       return true;
     }
     jsvUnLock(callbackVar);
-    JsVar *countVar = jsvObjectGetChild(data, "count", 0);
-    JsVar *dataVar = jsvObjectGetChild(data, "data", 0);
+    JsVar *countVar = jsvObjectGetChildIfExists(data, "count");
+    JsVar *dataVar = jsvObjectGetChildIfExists(data, "data");
     if (countVar && dataVar && jsvIsNumeric(countVar)) {
       int n = (int)jsvGetInteger(countVar);
       while (ok && n-- > 0) {
@@ -122,7 +123,7 @@ bool jsvIterateBufferCallback(
   }
   // Handle the data being an object.
   else if (jsvIsObject(data)) {
-    JsVar *callbackVar = jsvObjectGetChild(data, "callback", 0);
+    JsVar *callbackVar = jsvObjectGetChildIfExists(data, "callback");
     if (jsvIsFunction(callbackVar)) {
       JsVar *result = jspExecuteFunction(callbackVar,0,0,NULL);
       jsvUnLock(callbackVar);
@@ -134,8 +135,8 @@ bool jsvIterateBufferCallback(
       return true;
     }
     jsvUnLock(callbackVar);
-    JsVar *countVar = jsvObjectGetChild(data, "count", 0);
-    JsVar *dataVar = jsvObjectGetChild(data, "data", 0);
+    JsVar *countVar = jsvObjectGetChildIfExists(data, "count");
+    JsVar *dataVar = jsvObjectGetChildIfExists(data, "data");
     if (countVar && dataVar && jsvIsNumeric(countVar)) {
       int n = (int)jsvGetInteger(countVar);
       while (ok && n-- > 0) {
@@ -771,7 +772,9 @@ void jsvIteratorNext(JsvIterator *it) {
 
 void jsvIteratorFree(JsvIterator *it) {
   switch (it->type) {
-  case JSVI_FULLARRAY: jsvUnLock(it->it.obj.var); // intentionally no break
+  case JSVI_FULLARRAY: jsvUnLock(it->it.obj.var);
+                       jsvObjectIteratorFree(&it->it.obj.it);
+       break;
   case JSVI_OBJECT : jsvObjectIteratorFree(&it->it.obj.it); break;
   case JSVI_STRING : jsvStringIteratorFree(&it->it.str); break;
   case JSVI_ARRAYBUFFER : jsvArrayBufferIteratorFree(&it->it.buf); break;
@@ -783,7 +786,9 @@ void jsvIteratorClone(JsvIterator *dstit, JsvIterator *it) {
   dstit->type = it->type;
   switch (it->type) {
   case JSVI_FULLARRAY: dstit->it.obj.index = it->it.obj.index;
-                       dstit->it.obj.var = jsvLockAgain(it->it.obj.var);  // intentionally no break
+                       dstit->it.obj.var = jsvLockAgain(it->it.obj.var);
+                       jsvObjectIteratorClone(&dstit->it.obj.it, &it->it.obj.it);
+                       break;
   case JSVI_OBJECT : jsvObjectIteratorClone(&dstit->it.obj.it, &it->it.obj.it); break;
   case JSVI_STRING : jsvStringIteratorClone(&dstit->it.str, &it->it.str); break;
   case JSVI_ARRAYBUFFER : jsvArrayBufferIteratorClone(&dstit->it.buf, &it->it.buf); break;

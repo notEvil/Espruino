@@ -220,7 +220,7 @@ void jsfGetJSONForFunctionWithCallback(JsVar *var, JSONFlags flags, vcbprintf_ca
   if (jsvIsNativeFunction(var)) {
     cbprintf(user_callback, user_data, "{ [native code] }");
 #ifdef ESPR_JIT
-  } else if (jitCode = jsvFindChildFromString(var, JSPARSE_FUNCTION_JIT_CODE_NAME, false)) {
+  } else if ((jitCode = jsvFindChildFromString(var, JSPARSE_FUNCTION_JIT_CODE_NAME, false))) {
     jsvUnLock(jitCode);
     cbprintf(user_callback, user_data, "{ [JIT] }");
 #endif
@@ -416,15 +416,19 @@ void jsfGetJSONWithCallback(JsVar *var, JsVar *varName, JSONFlags flags, const c
       if (isBasicArrayBuffer && !asArray) cbprintf(user_callback, user_data, ".buffer");
     }
   } else if (jsvIsObject(var)) {
+#ifndef ESPR_EMBED
     IOEventFlags device = (flags & JSON_SHOW_DEVICES) ? jsiGetDeviceFromClass(var) : EV_NONE;
     if (device!=EV_NONE) {
       cbprintf(user_callback, user_data, "%s", jshGetDeviceString(device));
     } else {
+#else
+    {
+#endif
       bool showContents = true;
       if (flags & JSON_SHOW_OBJECT_NAMES) {
-        JsVar *proto = jsvObjectGetChild(var, JSPARSE_INHERITS_VAR, 0);
+        JsVar *proto = jsvObjectGetChildIfExists(var, JSPARSE_INHERITS_VAR);
         if (jsvHasChildren(proto)) {
-          JsVar *constr = jsvObjectGetChild(proto, JSPARSE_CONSTRUCTOR_VAR, 0);
+          JsVar *constr = jsvObjectGetChildIfExists(proto, JSPARSE_CONSTRUCTOR_VAR);
           if (constr) {
             JsVar *p = jsvGetIndexOf(execInfo.root, constr, true);
             if (p) cbprintf(user_callback, user_data, "%v: ", p);
@@ -509,8 +513,8 @@ void jsfGetJSON(JsVar *var, JsVar *result, JSONFlags flags) {
 }
 
 void jsfPrintJSON(JsVar *var, JSONFlags flags) {
-  jsfGetJSONWithCallback(var, NULL, flags, 0, (vcbprintf_callback)jsiConsolePrintString, 0);
+  jsfGetJSONWithCallback(var, NULL, flags, 0, vcbprintf_callback_jsiConsolePrintString, 0);
 }
 void jsfPrintJSONForFunction(JsVar *var, JSONFlags flags) {
-  jsfGetJSONForFunctionWithCallback(var, flags, (vcbprintf_callback)jsiConsolePrintString, 0);
+  jsfGetJSONForFunctionWithCallback(var, flags, vcbprintf_callback_jsiConsolePrintString, 0);
 }

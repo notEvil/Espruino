@@ -12,7 +12,7 @@ ifdef NRF_SDK17
 # Use SDK17
 NRF5X_SDK=17
 NRF5X_SDK_17=1
-NRF5X_SDK_PATH=$(ROOT)/targetlibs/nrf5x_17
+NRF5X_SDK_PATH=targetlibs/nrf5x_17
 DEFINES += -DNRF_SD_BLE_API_VERSION=7
 DEFINES += -D__HEAP_SIZE=0
 ifeq ($(CHIP),NRF52840)
@@ -29,7 +29,7 @@ ifdef NRF_SDK15
 # Use SDK15
 NRF5X_SDK=15
 NRF5X_SDK_15=1
-NRF5X_SDK_PATH=$(ROOT)/targetlibs/nrf5x_15
+NRF5X_SDK_PATH=targetlibs/nrf5x_15
 DEFINES += -DNRF_SD_BLE_API_VERSION=6
 DEFINES += -D__HEAP_SIZE=0
 ifeq ($(CHIP),NRF52840)
@@ -48,7 +48,7 @@ ifdef NRF_SDK14
 # Use SDK14
 NRF5X_SDK=14
 NRF5X_SDK_14=1
-NRF5X_SDK_PATH=$(ROOT)/targetlibs/nrf5x_14
+NRF5X_SDK_PATH=targetlibs/nrf5x_14
 DEFINES += -DNRF_SD_BLE_API_VERSION=5
 DEFINES += -D__HEAP_SIZE=0
 ifeq ($(CHIP),NRF52840)
@@ -61,14 +61,14 @@ ifdef NRF_SDK11
 # Use SDK11
 NRF5X_SDK=11
 NRF5X_SDK_11=1
-NRF5X_SDK_PATH=$(ROOT)/targetlibs/nrf5x_11
+NRF5X_SDK_PATH=targetlibs/nrf5x_11
 DEFINES += -DNRF_SD_BLE_API_VERSION=2
 SOFTDEVICE        = $(SOFTDEVICE_PATH)/hex/s132_nrf52_2.0.0_softdevice.hex
 else
 # Use SDK12
 NRF5X_SDK=12
 NRF5X_SDK_12=1
-NRF5X_SDK_PATH=$(ROOT)/targetlibs/nrf5x_12
+NRF5X_SDK_PATH=targetlibs/nrf5x_12
 DEFINES += -DNRF_SD_BLE_API_VERSION=3
 SOFTDEVICE        = $(SOFTDEVICE_PATH)/hex/s132_nrf52_3.1.0_softdevice.hex
 endif
@@ -77,14 +77,16 @@ endif
 endif
 
 # ARCHFLAGS are shared by both CFLAGS and LDFLAGS.
-ARCHFLAGS = -mcpu=cortex-m4 -mthumb -mabi=aapcs -mfloat-abi=softfp -mfpu=fpv4-sp-d16
+ARCHFLAGS += -mcpu=cortex-m4 -mthumb -mabi=aapcs 
+ARCHFLAGS += -mfloat-abi=softfp -mfpu=fpv4-sp-d16
+# Espruino uses doubles, not floats - so actually using hardfp doesn't actually help us much and adds register-swapping overhead
 
 # nRF52 specific.
 INCLUDE          += -I$(SOFTDEVICE_PATH)/headers
 INCLUDE          += -I$(SOFTDEVICE_PATH)/headers/nrf52
 
 DEFINES += -DBLE_STACK_SUPPORT_REQD
-DEFINES += -DSWI_DISABLE0 -DSOFTDEVICE_PRESENT -DFLOAT_ABI_HARD 
+DEFINES += -DSWI_DISABLE0 -DSOFTDEVICE_PRESENT
 DEFINES += -DNRF52_SERIES
 # Nordic screwed over anyone who used -DNRF52 in new SDK versions
 # but then old SDKs won't work without it

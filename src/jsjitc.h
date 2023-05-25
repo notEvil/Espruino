@@ -17,6 +17,7 @@
 
 #include "jsutils.h"
 #include "jsjit.h"
+#include "jsvariterator.h"
 
 // Write debug info to the console
 #define DEBUG_JIT jsjcDebugPrintf
@@ -50,6 +51,7 @@ typedef enum {
   JSJAC_LE, // Signed less than or equal
   JSJAC_AL  // Always
 } JsjAsmCondition;
+#define JSJAC_STRING "EQ\0NE\0CS\0CC\0MI\0PL\0VS\0VC\0HI\0LI\0GE\0LT\0GT\0LE\0AL"
 
 typedef enum {
   JSJAR_r0,
@@ -73,6 +75,8 @@ typedef struct {
   JsjPhase phase;
   /// The ARM Thumb-2 code we're in the process of creating
   JsVar *code;
+  /// An iterator to increase write speed for code
+  JsvStringIterator codeIt;
   /// The ARM Thumb-2 variable init code block (this goes right at the start of our function)
   JsVar *initCode;
   /// How many blocks deep are we? blockCount=0 means we're writing to the 'code' var

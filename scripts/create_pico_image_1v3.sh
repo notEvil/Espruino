@@ -15,11 +15,15 @@
 cd `dirname $0` # scripts
 cd ..            # main dir
 BASEDIR=`pwd`
-
+if [[ ! -v BINDIR ]]; then 
+  echo "BINDIR not set, assuming 'bin'";
+  BINDIR=bin
+fi
 BOARDNAME=PICO_R1_3
-ESPRUINOFILE=`python scripts/get_board_info.py $BOARDNAME "common.get_board_binary_name(board)"`
-BOOTLOADERFILE=bootloader_$ESPRUINOFILE
-IMGFILE=pico_full.bin
+ESPRUINOBINARY=`python scripts/get_board_info.py $BOARDNAME "common.get_board_binary_name(board)"`
+BOOTLOADERFILE=$BINDIR/bootloader_$ESPRUINOBINARY
+IMGFILE=$BINDIR/full_$ESPRUINOBINARY.bin
+ESPRUINOFILE=$BINDIR/$ESPRUINOBINARY
 rm -f $ESPRUINOFILE $BOOTLOADERFILE $IMGFILE
 
 export BOARD=PICO_R1_3
@@ -27,10 +31,10 @@ export BOARD=PICO_R1_3
 export RELEASE=1
 
 BOOTLOADER=1 make clean
-BOOTLOADER=1 make || { echo 'Build failed' ; exit 1; }
+BOOTLOADER=1 make || { echo 'ERROR Build failed' ; exit 255; }
 
 make clean
-make || { echo 'Build failed' ; exit 1; }
+make || { echo 'ERROR Build failed' ; exit 255; }
 
 BOOTLOADERSIZE=`python scripts/get_board_info.py $BOARDNAME "common.get_espruino_binary_address(board)"`
 IMGSIZE=$(expr $BOOTLOADERSIZE + $(du "$ESPRUINOFILE" | cut -f1))
@@ -41,18 +45,18 @@ echo Image Size = $IMGSIZE
 echo ---------------------
 echo Create blank image
 echo ---------------------
-tr "\000" "\377" < /dev/zero | dd bs=1 count=$IMGSIZE of=$IMGFILE || { echo 'Build failed' ; exit 1; }
+tr "\000" "\377" < /dev/zero | dd bs=1 count=$IMGSIZE of=$IMGFILE || { echo 'ERROR Build failed' ; exit 255; }
 
 echo Add bootloader
 echo ---------------------
-dd bs=1 if=$BOOTLOADERFILE of=$IMGFILE conv=notrunc || { echo 'Build failed' ; exit 1; }
+dd bs=1 if=$BOOTLOADERFILE of=$IMGFILE conv=notrunc || { echo 'ERROR Build failed' ; exit 255; }
 
 echo Add espruino
 echo ---------------------
-dd bs=1 seek=$BOOTLOADERSIZE if=$ESPRUINOFILE of=$IMGFILE conv=notrunc || { echo 'Build failed' ; exit 1; }
+dd bs=1 seek=$BOOTLOADERSIZE if=$ESPRUINOFILE of=$IMGFILE conv=notrunc || { echo 'ERROR Build failed' ; exit 255; }
 
 
-cp $IMGFILE $ESPRUINOFILE || { echo 'Build failed' ; exit 1; }
+mv $IMGFILE $ESPRUINOFILE || { echo 'ERROR Build failed' ; exit 255; }
 echo ---------------------
 echo Finished! Written to $IMGFILE and copied to $ESPRUINOFILE
 echo dfu-util -a 0 -s 0x08000000 -D ${ESPRUINOFILE}

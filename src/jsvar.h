@@ -49,9 +49,10 @@ typedef enum {
   _JSV_NUMERIC_START = JSV_INTEGER, ///< --------- Start of numeric variable types
     JSV_FLOAT       = JSV_INTEGER+1, ///< floating point double (note JSV_NUMERICMASK)
     JSV_BOOLEAN     = JSV_FLOAT+1, ///< boolean (note JSV_NUMERICMASK)
-    JSV_PIN         = JSV_BOOLEAN+1, ///< pin (note JSV_NUMERICMASK)
-
-    JSV_ARRAYBUFFERNAME = JSV_PIN+1, ///< used for indexing into an ArrayBuffer. varData is an INT in this case
+#ifndef ESPR_EMBED
+    JSV_PIN,             ///< pin (note JSV_NUMERICMASK)
+#endif
+    JSV_ARRAYBUFFERNAME, ///< used for indexing into an ArrayBuffer. varData is an INT in this case
   _JSV_NAME_START = JSV_ARRAYBUFFERNAME, ///< ---------- Start of NAMEs (names of variables, object fields/etc)
     JSV_NAME_INT    = JSV_ARRAYBUFFERNAME+1, ///< integer array/object index
   _JSV_NAME_INT_START = JSV_NAME_INT,
@@ -124,12 +125,24 @@ typedef enum {
 #define JSV_ARRAYBUFFER_IS_FLOAT(T) (((T)&ARRAYBUFFERVIEW_FLOAT)!=0)
 #define JSV_ARRAYBUFFER_IS_CLAMPED(T) (((T)&ARRAYBUFFERVIEW_CLAMPED)!=0)
 
+#if JSVAR_DATA_STRING_LEN<8 // only enough space for a 16 bit length
+typedef uint16_t JsVarDataNativeStrLength;
+#define JSV_NATIVE_STR_MAX_LENGTH 65535
+typedef uint16_t JsVarArrayBufferLength;
 #define JSV_ARRAYBUFFER_MAX_LENGTH 65535
+#define JSV_ARRAYBUFFER_LENGTH_BITS
+#else // enough space for 24 bit length
+typedef uint32_t JsVarDataNativeStrLength;
+#define JSV_NATIVE_STR_MAX_LENGTH 0xFFFFFFFF
+typedef uint32_t JsVarArrayBufferLength;
+#define JSV_ARRAYBUFFER_MAX_LENGTH 0xFFFFFF
+#define JSV_ARRAYBUFFER_LENGTH_BITS : 24
+#endif
 
 /// Data for ArrayBuffers. Max size here is 6 bytes in most cases (4 byte data + 2x JsVarRef)
 typedef struct {
   unsigned short byteOffset;
-  unsigned short length;
+  JsVarArrayBufferLength length JSV_ARRAYBUFFER_LENGTH_BITS;
   JsVarDataArrayBufferViewType type;
 } PACKED_FLAGS JsVarDataArrayBufferView;
 
@@ -138,14 +151,6 @@ typedef struct {
   void (*ptr)(void); ///< Function pointer - this may not be the real address - see jsvGetNativeFunctionPtr
   uint16_t argTypes; ///< Actually a list of JsnArgumentType
 } PACKED_FLAGS JsVarDataNative;
-
-#if JSVARREF_SIZE==1
-typedef uint16_t JsVarDataNativeStrLength;
-#define JSV_NATIVE_STR_MAX_LENGTH 65535
-#else
-typedef uint32_t JsVarDataNativeStrLength;
-#define JSV_NATIVE_STR_MAX_LENGTH 0xFFFFFFFF
-#endif
 
 /// Data for native strings
 typedef struct {
@@ -207,7 +212,7 @@ typedef union {
 
 
 
-typedef struct {
+typedef struct JsVarStruct {
   /** The actual variable data, as well as references (see below). Put first so word aligned */
   JsVarData varData;
 
@@ -293,6 +298,7 @@ void jsvUpdateMemoryAddress(size_t oldAddr, size_t length, size_t newAddr);
 JsVar *jsvNewWithFlags(JsVarFlags flags); ///< Create a new variable with the given flags
 JsVar *jsvNewFlatStringOfLength(unsigned int byteLength); ///< Try and create a special flat string, return 0 on failure
 JsVar *jsvNewFromString(const char *str); ///< Create a new string
+JsVar *jsvNewNameFromString(const char *str); ///< Create a new name from a string
 JsVar *jsvNewStringOfLength(unsigned int byteLength, const char *initialData); ///< Create a new string of the given length - full of 0s (or initialData if specified)
 static ALWAYS_INLINE JsVar *jsvNewFromEmptyString() { return jsvNewWithFlags(JSV_STRING_0); } ;///< Create a new empty string
 static ALWAYS_INLINE JsVar *jsvNewNull() { return jsvNewWithFlags(JSV_NULL); } ;///< Create a new null variable
@@ -303,7 +309,6 @@ JsVar *jsvNewFromBool(bool value);
 JsVar *jsvNewFromFloat(JsVarFloat value);
 /// Create an integer (or float) from this value, depending on whether it'll fit in 32 bits or not.
 JsVar *jsvNewFromLongInteger(long long value);
-JsVar *jsvNewFromPin(int pin);
 JsVar *jsvNewObject(); ///< Create a new object
 JsVar *jsvNewEmptyArray(); ///< Create a new array
 JsVar *jsvNewArray(JsVar **elements, int elementCount); ///< Create an array containing the given elements
@@ -314,6 +319,11 @@ JsVar *jsvNewNativeString(char *ptr, size_t len); ///< Create a Native String po
 JsVar *jsvNewFlashString(char *ptr, size_t len); ///< Create a Flash String pointing to the given memory area
 #endif
 JsVar *jsvNewArrayBufferFromString(JsVar *str, unsigned int lengthOrZero); ///< Create a new ArrayBuffer backed by the given string. If length is not specified, it will be worked out
+
+#ifndef ESPR_EMBED
+JsVar *jsvNewFromPin(int pin);
+#endif
+
 
 /// Turns var into a Variable name that links to the given value... No locking so no need to unlock var
 JsVar *jsvMakeIntoVariableName(JsVar *var, JsVar *valueOrZero);
@@ -627,8 +637,8 @@ JsVar *jsvCopy(JsVar *src, bool copyChildren);
 JsVar *jsvCopyNameOnly(JsVar *src, bool linkChildren, bool keepAsName);
 /// Tree related stuff
 void jsvAddName(JsVar *parent, JsVar *nameChild); // Add a child, which is itself a name
-JsVar *jsvAddNamedChild(JsVar *parent, JsVar *child, const char *name); // Add a child, and create a name for it. Returns a LOCKED var. DOES NOT CHECK FOR DUPLICATES
-JsVar *jsvSetNamedChild(JsVar *parent, JsVar *child, const char *name); // Add a child, and create a name for it. Returns a LOCKED name var. CHECKS FOR DUPLICATES
+JsVar *jsvAddNamedChild(JsVar *parent, JsVar *value, const char *name); // Add a child, and create a name for it. Returns a LOCKED var. DOES NOT CHECK FOR DUPLICATES
+void jsvAddNamedChildAndUnLock(JsVar *parent, JsVar *value, const char *name); // Add a child, and create a name for it AND unlock the value and name. DOES NOT CHECK FOR DUPLICATES
 JsVar *jsvSetValueOfName(JsVar *name, JsVar *src); // Set the value of a child created with jsvAddName,jsvAddNamedChild. Returns the UNLOCKED name argument
 JsVar *jsvFindChildFromString(JsVar *parent, const char *name, bool createIfNotFound); // Non-recursive finding of child with name. Returns a LOCKED var
 JsVar *jsvFindChildFromStringI(JsVar *parent, const char *name); ///< Find a child with a matching name using a case insensitive search
@@ -640,6 +650,8 @@ void jsvRemoveAllChildren(JsVar *parent);
 
 /// Get the named child of an object. If createChild!=0 then create the child
 JsVar *jsvObjectGetChild(JsVar *obj, const char *name, JsVarFlags createChild);
+/// Get the named child of an object, or return 0
+JsVar *jsvObjectGetChildIfExists(JsVar *obj, const char *name);
 /// Get the named child of an object using a case-insensitive search
 JsVar *jsvObjectGetChildI(JsVar *obj, const char *name);
 /// Set the named child of an object, and return the child (so you can choose to unlock it if you want)
@@ -778,4 +790,11 @@ void jsvFree(void *ptr);
     }                                                                         \
   }
 
+#if defined(JSVAR_MALLOC)
+extern unsigned int jsVarsSize;
+extern JsVar *jsVars;
+#endif
+
 #endif /* JSVAR_H_ */
+
+

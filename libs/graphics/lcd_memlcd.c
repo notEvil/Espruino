@@ -146,7 +146,11 @@ void lcdMemLCD_fillRect(struct JsGraphics *gfx, int x1, int y1, int x2, int y2, 
   /* On 3bpp if we're filling a small width of pixels, just set them
   individually - it's possible to do with a mask too, but it hurts
   my head and it's not quite as big a performance improvement. */
+#ifdef EMSCRIPTEN
+  if (true) { // on emscripten, unaligned 32 bit access doesn't work - we just set pixels individually (speed doesn't matter as it's emulated)
+#else
   if (x2-x1 < 8) {
+#endif
     // For 3 bit, precalculate what the 2 pixels go to
     unsigned int cols[2][2] = {
         { lcdMemLCD_convert16toLCD(col,0,0), lcdMemLCD_convert16toLCD(col,1,0) }, // even row
@@ -299,13 +303,17 @@ void lcdMemLCD_flip(JsGraphics *gfx) {
      * Optimisation: we could just send any non-overlaid stuff above or below
      * the overlay...
      */
+    // Take account of rotation - only check for a full 180 rotation - doing 90 is too hard
+    bool isRotated180 = (graphicsInternal.data.flags & (JSGRAPHICSFLAGS_SWAP_XY | JSGRAPHICSFLAGS_INVERT_X | JSGRAPHICSFLAGS_INVERT_Y)) ==
+                      (JSGRAPHICSFLAGS_INVERT_X | JSGRAPHICSFLAGS_INVERT_Y);
+    int ovY = isRotated180 ? (LCD_HEIGHT-(lcdOverlayY+overlayImg.height)) : lcdOverlayY;
 
     // initialise image layer
     GfxDrawImageLayer l;
     l.x1 = 0;
-    l.y1 = lcdOverlayY;
+    l.y1 = ovY;
     l.img = overlayImg;
-    l.rotate = 0;
+    l.rotate = isRotated180 ? 3.141592 : 0;
     l.scale = 1;
     l.center = false;
     l.repeat = false;
@@ -318,7 +326,7 @@ void lcdMemLCD_flip(JsGraphics *gfx) {
       // copy original line in
       memcpy(buf, &lcdBuffer[LCD_STRIDE*y], LCD_STRIDE);
       // overwrite areas with overlay image
-      if (y>=lcdOverlayY && y<lcdOverlayY+overlayImg.height) {
+      if (y>=ovY && y<ovY+overlayImg.height) {
         _jswrap_drawImageLayerStartX(&l);
         for (int x=0;x<overlayImg.width;x++) {
           unsigned int c;
@@ -401,13 +409,11 @@ void lcdMemLCD_extcominToggle() {
 
 // If backlight is on, we need to raise EXTCOMIN freq (use HW PWM)
 void lcdMemLCD_extcominBacklight(bool isOn) {
-  if (isBacklightOn != isOn) {
-    isBacklightOn = isOn;
-    if (isOn) {
-      jshPinAnalogOutput(LCD_EXTCOMIN, 0.0003, 120, JSAOF_NONE); // ~3us
-    } else {
-      jshPinOutput(LCD_EXTCOMIN, 0);
-    }
+  isBacklightOn = isOn;
+  if (isOn) {
+    jshPinAnalogOutput(LCD_EXTCOMIN, 0.0003, 120, JSAOF_NONE); // ~3us
+  } else {
+    jshPinOutput(LCD_EXTCOMIN, 0);
   }
 }
 

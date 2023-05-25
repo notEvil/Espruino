@@ -2,9 +2,17 @@ name: Firmware build
 
 on:
   push:
-    branches: [ master ]
+    branches: [ '*' ]
   pull_request:
-    branches: [ master ]
+    branches: [ '*' ]
+    
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      git-ref:
+        description: Git Ref (Optional)    
+        required: false
+      
 
 permissions:
   contents: read
@@ -35,14 +43,14 @@ jobs:
         make
         ./scripts/ci_upload.sh
     - name: Upload ${{ matrix.board }} build artifact
-      uses: actions/upload-artifact@v3.1.1
+      uses: actions/upload-artifact@v3.1.2
       with:
         name: ${{ matrix.board }}
         path: |
-          *.bin
-          *.hex
-          *.tgz
-          *.zip
+          bin/*.bin
+          bin/*.hex
+          bin/*.tgz
+          bin/*.zip
     
         
   # Builds with DFU_UPDATE_BUILD=1        
@@ -70,14 +78,14 @@ jobs:
         make
         ./scripts/ci_upload.sh       
     - name: Upload ${{ matrix.board }} build artifact
-      uses: actions/upload-artifact@v3.1.1
+      uses: actions/upload-artifact@v3.1.2
       with:
         name: ${{ matrix.board }}
         path: |
-          *.bin
-          *.hex
-          *.tgz
-          *.zip
+          bin/*.bin
+          bin/*.hex
+          bin/*.tgz
+          bin/*.zip
        
   # Builds with PAD_FOR_BOOTLOADER=1
   build_padded:
@@ -104,14 +112,14 @@ jobs:
         make
         ./scripts/ci_upload.sh 
     - name: Upload ${{ matrix.board }} build artifact
-      uses: actions/upload-artifact@v3.1.1
+      uses: actions/upload-artifact@v3.1.2
       with:
         name: ${{ matrix.board }}
         path: |
-          *.bin
-          *.hex
-          *.tgz
-          *.zip
+          bin/*.bin
+          bin/*.hex
+          bin/*.tgz
+          bin/*.zip
  
  
 # Disable doc building for now 

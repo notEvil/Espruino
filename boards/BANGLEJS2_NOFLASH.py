@@ -52,6 +52,8 @@ info = {
      'DEFINES += -DESPR_DCDC_ENABLE=1', # Use DC/DC converter
      'ESPR_BLUETOOTH_ANCS=1', # Enable ANCS (Apple notifications) support
      'DEFINES += -DSPIFLASH_SLEEP_CMD', # SPI flash needs to be explicitly slept and woken up
+     'DEFINES += -DSPIFLASH_READ2X', # Read SPI flash at 2x speed using MISO and MOSI for IO     
+     'DEFINES += -DESPR_JSVAR_FLASH_BUFFER_SIZE=32', # The buffer size we use when executing/iterating over data in flash memory (default 16). Should be set based on benchmarks.     
      'DEFINES += -DAPP_TIMER_OP_QUEUE_SIZE=6', # Bangle.js accelerometer poll handler needs something else in queue size
      'DEFINES+=-DBLUETOOTH_NAME_PREFIX=\'"Bangle.js"\'',
      'DEFINES+=-DCUSTOM_GETBATTERY=jswrap_banglejs_getBattery',
@@ -123,7 +125,7 @@ devices = {
             'pin_bl' : 'D8',
           },
   'TOUCH' : {
-            'device' : 'CTS816S', 'addr' : 0x15,
+            'device' : 'CST816S', 'addr' : 0x15,
             'pin_sda' : 'D33',
             'pin_scl' : 'D34',
             'pin_rst' : 'D35',

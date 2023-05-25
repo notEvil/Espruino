@@ -14,11 +14,11 @@
 # user setting area that sits between the two 256KB partitions, so we can merrily use it for
 # code.
 ESP_ZIP     = $(PROJ_NAME).tgz
-USER1_BIN    = espruino_esp8266_user1.bin
-USER2_BIN    = espruino_esp8266_user2.bin
-USER1_ELF    = espruino_esp8266_user1.elf
-USER2_ELF    = espruino_esp8266_user2.elf
-PARTIAL      = espruino_esp8266_partial.o
+USER1_BIN    = $(OBJDIR)/espruino_esp8266_user1.bin
+USER2_BIN    = $(OBJDIR)/espruino_esp8266_user2.bin
+USER1_ELF    = $(OBJDIR)/espruino_esp8266_user1.elf
+USER2_ELF    = $(OBJDIR)/espruino_esp8266_user2.elf
+PARTIAL      = $(OBJDIR)/espruino_esp8266_partial.o
 
 ifdef FLASH_4MB
 ESP_FLASH_ADDONS  = $(ET_DEFAULTS) $(INIT_DATA) $(ET_BLANK) $(BLANK)
@@ -51,12 +51,12 @@ combined: $(ESP_COMBINED)
 $(PARTIAL): $(OBJS) $(LINKER_FILE)
 	@echo LD $@
 ifdef USE_CRYPTO
-	$(Q)$(OBJCOPY) --rename-section .rodata=.irom0.text libs/crypto/mbedtls/library/sha1.o
+	$(Q)$(OBJCOPY) --rename-section .rodata=.irom0.text $(OBJDIR)/libs/crypto/mbedtls/library/sha1.o
 ifdef USE_SHA256
-	$(Q)$(OBJCOPY) --rename-section .rodata=.irom0.text libs/crypto/mbedtls/library/sha256.o
+	$(Q)$(OBJCOPY) --rename-section .rodata=.irom0.text $(OBJDIR)/libs/crypto/mbedtls/library/sha256.o
 endif
 ifdef USE_SHA512
-	$(Q)$(OBJCOPY) --rename-section .rodata=.irom0.text libs/crypto/mbedtls/library/sha512.o
+	$(Q)$(OBJCOPY) --rename-section .rodata=.irom0.text $(OBJDIR)/libs/crypto/mbedtls/library/sha512.o
 endif
 endif
 	$(Q)$(LD) $(OPTIMIZEFLAGS) -nostdlib -Wl,--no-check-sections -Wl,-static -r -o $@ $(OBJS)
@@ -68,7 +68,7 @@ $(USER1_ELF): $(PARTIAL) $(LINKER_FILE)
 	$(Q)$(LD) $(LDFLAGS) -T$(LD_SCRIPT1) -o $@ $(PARTIAL) -Wl,--start-group $(LIBS) -Wl,--end-group
 	$(Q)$(OBJDUMP) --headers -j .data -j .rodata -j .bss -j .irom0.text -j .text $@ | tail -n +4
 	@echo To disassemble: $(OBJDUMP) -d -l -x $@
-	$(OBJDUMP) -d -l -x $@ >espruino_esp8266_user1.lst
+	$(OBJDUMP) -d -l -x $@ > $(BINDIR)/espruino_esp8266_user1.lst
 
 # generate fully linked 'user2' .elf using linker script for second OTA partition
 $(USER2_ELF): $(PARTIAL) $(LINKER_FILE)
@@ -102,14 +102,14 @@ $(USER2_BIN): $(USER2_ELF) $(USER1_BIN)
 	$(Q) mv eagle.app.flash.bin $@
 
 $(ESP_ZIP): $(USER1_BIN) $(USER2_BIN)
-	$(Q)rm -rf build/$(basename $(ESP_ZIP))
-	$(Q)mkdir -p build/$(basename $(ESP_ZIP))
+	$(Q)rm -rf $(PROJ_NAME)
+	$(Q)mkdir -p $(PROJ_NAME)
 	$(Q)cp $(USER1_BIN) $(USER2_BIN) scripts/wiflash.sh $(BLANK) \
 	  $(INIT_DATA) $(BOOTLOADER) \
 	  targets/esp8266/README_flash.txt \
 	  targets/esp8266/Makefile \
-	  build/$(basename $(ESP_ZIP))
-	$(Q)tar -C build -zcf $(ESP_ZIP) ./$(basename $(ESP_ZIP))
+	  $(PROJ_NAME)
+	$(Q)$(TAR) -zcf $(ESP_ZIP) $(PROJ_NAME) --transform='s/$(BINDIR)\///g'
 
 # Combined 512k/4096k binary that includes everything that's needed and can be
 # flashed to 0 in 512k/4096k parts

@@ -112,7 +112,7 @@ This is a partial list of definitions that can be added in a `BOARD.py` file's `
 
 * `SAVE_ON_FLASH` - Remove some features (like any ES6 support) to target devices with ~128kB Flash
 * `SAVE_ON_FLASH_EXTREME` - Pull out as many features as possible to target devices with ~128kB Flash that also want things like Filesystem support
-* `BLUETOOTH_NAME_PREFIX="..."` - Make the Bluetooth LE device's name `BLUETOOTH_NAME_PREFIX` followed by the last 2 bytes of the MAC address.
+* `BLUETOOTH_NAME_PREFIX="..."` - NRF52 only: Make the Bluetooth LE device's name `BLUETOOTH_NAME_PREFIX` followed by the last 2 bytes of the MAC address.
 * `BLUETOOTH_ADVERTISING_INTERVAL=375` - set the default Bluetooth advertising interval (default 375)
 * `NFC_DEFAULT_URL="http://foo"` - If defined, set the advertised NFC URL to the one given, plus `?a=ble_address`. Only do it for a fresh boot - not when code has been saved.
 * `PIN_NAMES_DIRECT=1` - Package skips out some pins (maybe there's `D0`,`D1`,`D3` but no `D2`), so the code must search rather than just offsetting based on pin number.
@@ -135,6 +135,9 @@ This is a partial list of definitions that can be added in a `BOARD.py` file's `
 * `ESPR_NO_LOADING_SCREEN` - Bangle.js, don't show a 'loading' screen when loading a new app
 * `ESPR_BOOTLOADER_SPIFLASH` - Allow bootloader to flash direct from a file in SPI flash storage
 * `ESPR_BANGLE_UNISTROKE` - Build in 'unistroke' touch gesture recognition
+* `SPIFLASH_SLEEP_CMD` - Set if SPI flash needs to be explicitly slept and woken up
+* `SPIFLASH_READ2X` - Enable 2x speed reads of external flash (using MOSI+MOSI as inputs)
+* `ESPR_JSVAR_FLASH_BUFFER_SIZE=32` - The buffer size in bytes we use when executing/iterating over data in external flash memory (default 16). Should be set based on benchmarks.
 
 These are set automatically when `SAVE_ON_FLASH` is set (see `jsutils.h`)
 

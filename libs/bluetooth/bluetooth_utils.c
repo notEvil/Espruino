@@ -213,7 +213,7 @@ const char *bleVarToUUIDAndUnLock(ble_uuid_t *uuid, JsVar *v) {
 /// Queue an event on the 'NRF' object. Also calls jshHadEvent()
 void bleQueueEventAndUnLock(const char *name, JsVar *data) {
   //jsiConsolePrintf("[%s] %j\n", name, data);
-  JsVar *nrf = jsvObjectGetChild(execInfo.root, "NRF", 0);
+  JsVar *nrf = jsvObjectGetChildIfExists(execInfo.root, "NRF");
   if (jsvHasChildren(nrf)) {
     jsiQueueObjectCallbacks(nrf, name, &data, data?1:0);
     jshHadEvent();
@@ -306,6 +306,31 @@ bool jsble_exec_pending_common(BLEPending blep, uint16_t data, unsigned char *bu
     jsvUnLock(v);
     break;
   }
+  case BLEP_ADV_REPORT: {
+    BLEAdvReportData *p_adv = (BLEAdvReportData *)buffer;
+    size_t len = sizeof(BLEAdvReportData) + p_adv->dlen - BLE_GAP_ADV_MAX_SIZE;
+    if (bufferLen != len) {
+      jsiConsolePrintf("%d %d %d\n", bufferLen,len,p_adv->dlen);
+      assert(0);
+      break;
+    }
+    JsVar *evt = jsvNewObject();
+    if (evt) {
+      jsvObjectSetChildAndUnLock(evt, "rssi", jsvNewFromInteger(p_adv->rssi));
+      //jsvObjectSetChildAndUnLock(evt, "addr_type", jsvNewFromInteger(blePendingAdvReport.peer_addr.addr_type));
+      jsvObjectSetChildAndUnLock(evt, "id", bleAddrToStr(p_adv->peer_addr));
+      JsVar *data = jsvNewStringOfLength(p_adv->dlen, (char*)p_adv->data);
+      if (data) {
+        JsVar *ab = jsvNewArrayBufferFromString(data, p_adv->dlen);
+        jsvUnLock(data);
+        jsvObjectSetChildAndUnLock(evt, "data", ab);
+      }
+      // push onto queue
+      jsiQueueObjectCallbacks(execInfo.root, BLE_SCAN_EVENT, &evt, 1);
+      jsvUnLock(evt);
+    }
+    break;
+  }
 #if CENTRAL_LINK_COUNT>0
   case BLEP_TASK_FAIL:
     bleCompleteTaskFail(bleGetCurrentTask(), 0);
@@ -394,7 +419,7 @@ bool jsble_exec_pending_common(BLEPending blep, uint16_t data, unsigned char *bu
       bleCompleteTaskSuccess(BLETASK_DISCONNECT, bleTaskInfo);
     JsVar *gattServer = bleGetActiveBluetoothGattServer(centralIdx);
     if (gattServer) {
-      JsVar *bluetoothDevice = jsvObjectGetChild(gattServer, "device", 0);
+      JsVar *bluetoothDevice = jsvObjectGetChildIfExists(gattServer, "device");
       jsvObjectSetChildAndUnLock(gattServer, "connected", jsvNewFromBool(false));
       jsvObjectRemoveChild(gattServer, "handle");
       if (bluetoothDevice) {
@@ -410,7 +435,7 @@ bool jsble_exec_pending_common(BLEPending blep, uint16_t data, unsigned char *bu
     break;
   }
   case BLEP_CENTRAL_NOTIFICATION: {
-   JsVar *handles = jsvObjectGetChild(execInfo.hiddenRoot, "bleHdl", 0);
+   JsVar *handles = jsvObjectGetChildIfExists(execInfo.hiddenRoot, "bleHdl");
    if (handles) {
      JsVar *characteristic = jsvGetArrayItem(handles, data/*the handle*/);
      if (characteristic) {

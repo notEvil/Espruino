@@ -16,19 +16,20 @@
 
 #include "platform_config.h"
 
+#ifndef ESPR_EMBED
+#include "jstypes.h"
 #include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h> // for va_args
-#include <stdint.h>
 #include <stdbool.h>
-
 #include <math.h>
+#endif
 
 #ifndef BUILDNUMBER
-#define JS_VERSION "2v16"
+#define JS_VERSION "2v18"
 #else
-#define JS_VERSION "2v16." BUILDNUMBER
+#define JS_VERSION "2v18." BUILDNUMBER
 #endif
 /*
   In code:
@@ -45,6 +46,10 @@
 #define ESPR_NO_LINE_NUMBERS 1
 #define ESPR_NO_LET_SCOPING 1
 #define ESPR_NO_PROMISES 1
+#define ESPR_NO_CLASSES 1
+#define ESPR_NO_ARROW_FN 1
+#define ESPR_NO_REGEX 1
+#define ESPR_NO_TEMPLATE_LITERAL 1
 #endif
 
 #ifndef alloca
@@ -179,6 +184,8 @@ See comments after JsVar in jsvar.c for more info.
   typedef int32_t JsVarRefSigned;
   #define JSVARREF_BITS 32
   #define JSVARREFCOUNT_BITS 8
+  #define JSVARREF_MIN (-2147483648)
+  #define JSVARREF_MAX (2147483647)
 #else
    /** JsVarRaf stores References for variables - We treat 0 as null
    *  NOTE: we store JSVAR_DATA_STRING_* as actual values so we can do #if on them below
@@ -222,6 +229,11 @@ See comments after JsVar in jsvar.c for more info.
     #define JSVARREFCOUNT_BITS 4 // 56 - 13*4
     typedef uint16_t JsVarRef;
     typedef int16_t JsVarRefSigned;
+  #elif JSVAR_CACHE_SIZE <= 16383 // 14 bytes
+    #define JSVARREF_BITS 14
+    #define JSVARREFCOUNT_BITS 8 // 64 - 13*4
+    typedef uint16_t JsVarRef;
+    typedef int16_t JsVarRefSigned;
   #elif JSVAR_CACHE_SIZE <= 65535 // 16 bytes
     #define JSVARREF_BITS 16
     #define JSVARREFCOUNT_BITS 8
@@ -230,14 +242,15 @@ See comments after JsVar in jsvar.c for more info.
   #else
     #error "Assuming 16 bit refs we can't go above 65534 elements"
   #endif
+  #define JSVARREF_MIN (-(1<<(JSVARREF_BITS-1)))
+  #define JSVARREF_MAX ((1<<(JSVARREF_BITS-1))-1)
 #endif
 
 #ifndef JSVARREFCOUNT_PACK_BITS
 #define JSVARREFCOUNT_PACK_BITS 0
 #endif
 
-#define JSVARREF_MIN (-(1<<(JSVARREF_BITS-1)))
-#define JSVARREF_MAX ((1<<(JSVARREF_BITS-1))-1)
+
 #define JSVARREFCOUNT_MAX ((1<<JSVARREFCOUNT_BITS)-1)
 
 #if defined(__WORDSIZE) && __WORDSIZE == 64
@@ -278,13 +291,6 @@ field, but because they are bitfields we can't get pointers to them!
 #error JsVarDataRef is not big enough to store a double value
 #endif
 
-typedef int32_t JsVarInt;
-typedef uint32_t JsVarIntUnsigned;
-#ifdef USE_FLOATS
-typedef float JsVarFloat;
-#else
-typedef double JsVarFloat;
-#endif
 
 #define JSSYSTIME_MAX 0x7FFFFFFFFFFFFFFFLL
 typedef int64_t JsSysTime;
@@ -448,7 +454,7 @@ If jsonStyle=true, only string escapes supported by JSON are used. 'nextCh' is n
 to ensure that certain escape combinations are avoided. For instance "\0" + "0" is NOT "\00" */
 const char *escapeCharacter(char ch, char nextCh, bool jsonStyle);
 /** Parse radix prefixes, or return 0 */
-int getRadix(const char **s,  bool *hasError);
+int getRadix(const char **s);
 /// Convert a character to the hexadecimal equivalent (or -1)
 int chtod(char ch);
 /// Convert 2 characters to the hexadecimal equivalent (or -1)
@@ -465,14 +471,6 @@ long long stringToInt(const char *s);
 // forward decl
 struct JsLex;
 // ------------
-typedef enum {
-  JSET_STRING,
-  JSET_ERROR,
-  JSET_SYNTAXERROR,
-  JSET_TYPEERROR,
-  JSET_INTERNALERROR,
-  JSET_REFERENCEERROR
-} JsExceptionType;
 
 void jsAssertFail(const char *file, int line, const char *expr);
 
@@ -609,6 +607,9 @@ char clipi8(int x);
 /// Convert the given value to a signed integer assuming it has the given number of bits
 int twosComplement(int val, unsigned char bits);
 
+/// Calculate the parity of an 8 bit number
+bool calculateParity(uint8_t v);
+
 /// quick integer square root
 unsigned short int int_sqrt32(unsigned int x);
 
@@ -618,5 +619,9 @@ size_t jsuGetFreeStack();
 #ifdef ESP32
   void *espruino_stackHighPtr;  //Used by jsuGetFreeStack
 #endif
+
+typedef struct {
+  short x,y,z;
+} Vector3;
 
 #endif /* JSUTILS_H_ */

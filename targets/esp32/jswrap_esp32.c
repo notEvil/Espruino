@@ -23,6 +23,9 @@
 #include "esp_system.h"
 #include "esp_sleep.h"
 #include "esp_heap_caps.h"
+#include "esp_ota_ops.h"
+
+#include "driver/rtc_io.h"
 
 #ifdef BLUETOOTH
 #include "BLE/esp32_bluetooth_utils.h"
@@ -87,6 +90,111 @@ void jswrap_ESP32_deepSleep(int us) {
   esp_deep_sleep_start(); // This function does not return.
 } // End of jswrap_ESP32_deepSleep
 
+/*JSON{
+  "type"     : "staticmethod",
+  "class"    : "ESP32",
+  "ifdef" : "ESP32",
+  "name"     : "deepSleepExt0",
+  "generate" : "jswrap_ESP32_deepSleep_ext0",
+  "params"   : [
+    ["pin", "pin", "Pin to trigger wakeup"],
+    ["level", "int", "Logic level to trigger"]
+  ]
+}
+Put device in deepsleep state until interrupted by pin "pin".
+Eligible pin numbers are restricted to those [GPIOs designated
+as RTC GPIOs](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/gpio.html#gpio-summary).
+*/
+void jswrap_ESP32_deepSleep_ext0(Pin pin, int level) {
+  if (!rtc_gpio_is_valid_gpio(pin)) {
+    jsExceptionHere(JSET_ERROR, "Invalid pin!");
+    return;
+  }
+  esp_sleep_enable_ext0_wakeup(pin, level);
+  esp_deep_sleep_start(); // This function does not return.
+} // End of jswrap_ESP32_deepSleep_ext0
+
+/*JSON{
+  "type"     : "staticmethod",
+  "class"    : "ESP32",
+  "ifdef" : "ESP32",
+  "name"     : "deepSleepExt1",
+  "generate" : "jswrap_ESP32_deepSleep_ext1",
+  "params"   : [
+    ["pinVar", "JsVar", "Array of Pins to trigger wakeup"],
+    ["mode", "int", "Trigger mode"]
+  ]
+}
+Put device in deepsleep state until interrupted by pins in the "pinVar" array.
+The trigger "mode" determines the pin state which will wake up the device.
+Valid modes are:
+
+* `0: ESP_EXT1_WAKEUP_ALL_LOW` - all nominated pins must be set LOW to trigger wakeup
+* `1: ESP_EXT1_WAKEUP_ANY_HIGH` - any of nominated pins set HIGH will trigger wakeup
+
+Eligible pin numbers are restricted to those [GPIOs designated
+as RTC GPIOs](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/gpio.html#gpio-summary).
+*/
+void jswrap_ESP32_deepSleep_ext1(JsVar *pinVar, JsVarInt mode) {
+  uint64_t pinSum = 0;
+  if (jsvIsArray(pinVar)) {
+    JsvIterator it;
+    jsvIteratorNew(&it, pinVar, JSIF_DEFINED_ARRAY_ElEMENTS);
+    while (jsvIteratorHasElement(&it)) {
+      Pin pin = jshGetPinFromVarAndUnLock(jsvIteratorGetValue(&it));
+      if (!rtc_gpio_is_valid_gpio(pin)) {
+        jsvIteratorFree(&it);
+        jsExceptionHere(JSET_ERROR, "Invalid pin (%d)!", pin);
+        return;
+      }
+      pinSum += 1<<pin;
+
+      jsvIteratorNext(&it);
+    }
+    jsvIteratorFree(&it);
+  } else {
+    // We really expected an array of pins but
+    // handle case of a single pin anyway
+    Pin pin = jshGetPinFromVar(pinVar);
+    if (!rtc_gpio_is_valid_gpio(pin)) {
+      jsExceptionHere(JSET_ERROR, "Invalid pin (%d)!", pin);
+      return;
+    }
+    pinSum = 1<<pin;
+  }
+
+  if ((mode < 0) || (mode > 1)) {
+    jsExceptionHere(JSET_ERROR, "Invalid mode (%d)!", mode);
+    return;
+  }
+
+  esp_sleep_enable_ext1_wakeup(pinSum, mode);
+  esp_deep_sleep_start(); // This function does not return.
+} // End of jswrap_ESP32_deepSleep_ext1
+
+/*JSON{
+  "type"     : "staticmethod",
+  "class"    : "ESP32",
+  "ifdef" : "ESP32",
+  "name"     : "getWakeupCause",
+  "generate" : "jswrap_ESP32_getWakeupCause",
+  "return"   : ["int", "The cause of the ESP32's wakeup from sleep"]
+}
+Returns a variable identifying the cause of wakeup from deep sleep.
+Possible causes include:
+
+* `0: ESP_SLEEP_WAKEUP_UNDEFINED` - reset was not caused by exit from deep sleep
+* `2: ESP_SLEEP_WAKEUP_EXT0` - Wakeup caused by external signal using RTC_IO
+* `3: ESP_SLEEP_WAKEUP_EXT1` - Wakeup caused by external signal using RTC_CNTL
+* `4: ESP_SLEEP_WAKEUP_TIMER` - Wakeup caused by timer
+* `5: ESP_SLEEP_WAKEUP_TOUCHPAD` - Wakeup caused by touchpad
+* `6: ESP_SLEEP_WAKEUP_ULP` - Wakeup caused by ULP program
+
+*/
+int jswrap_ESP32_getWakeupCause() {
+  return esp_sleep_get_wakeup_cause();
+} // End of jswrap_ESP32_getWakeupCause
+
 
 /*JSON{
   "type"     : "staticmethod",
@@ -128,48 +236,74 @@ JsVar *jswrap_ESP32_getState() {
  "params"   : [
    ["level", "int", "which events should be shown (GAP=1, GATTS=2, GATTC=4). Use 255 for everything"]
  ],
- "ifdef"	: "BLUETOOTH"
+ "ifdef"  : "BLUETOOTH"
 }
 */
 void jswrap_ESP32_setBLE_Debug(int level){
-	ESP32_setBLE_Debug(level);
+  ESP32_setBLE_Debug(level);
 }
 
 /*JSON{
- "type"	: "staticmethod",
- "class"	: "ESP32",
+ "type"  : "staticmethod",
+ "class"  : "ESP32",
  "ifdef" : "ESP32",
- "name"		: "enableBLE",
- "generate"	: "jswrap_ESP32_enableBLE",
- "params"	: [
+ "name"    : "enableBLE",
+ "generate"  : "jswrap_ESP32_enableBLE",
+ "params"  : [
    ["enable", "bool", "switches Bluetooth on or off" ]
  ],
- "ifdef"	: "BLUETOOTH" 
+ "ifdef"  : "BLUETOOTH" 
 }
 Switches Bluetooth off/on, removes saved code from Flash, resets the board, and
 on restart creates jsVars depending on available heap (actual additional 1800)
 */
-void jswrap_ESP32_enableBLE(bool enable){ //may be later, we will support BLEenable(ALL/SERVER/CLIENT)
+void jswrap_ESP32_enableBLE(bool enable) { //may be later, we will support BLEenable(ALL/SERVER/CLIENT)
   ESP32_Set_NVS_Status(ESP_NETWORK_BLE,enable);
   jsfRemoveCodeFromFlash();
   esp_restart();
 }
 #endif
 /*JSON{
- "type"	: "staticmethod",
- "class"	: "ESP32",
+ "type"  : "staticmethod",
+ "class"  : "ESP32",
  "ifdef" : "ESP32",
- "name"		: "enableWifi",
- "generate"	: "jswrap_ESP32_enableWifi",
- "params"	: [
+ "name"    : "enableWifi",
+ "generate"  : "jswrap_ESP32_enableWifi",
+ "params"  : [
    ["enable", "bool", "switches Wifi on or off" ]
  ] 
 }
 Switches Wifi off/on, removes saved code from Flash, resets the board, and on
 restart creates jsVars depending on available heap (actual additional 3900)
 */
-void jswrap_ESP32_enableWifi(bool enable){ //may be later, we will support BLEenable(ALL/SERVER/CLIENT)
+void jswrap_ESP32_enableWifi(bool enable) { //may be later, we will support BLEenable(ALL/SERVER/CLIENT)
   ESP32_Set_NVS_Status(ESP_NETWORK_WIFI,enable);
   jsfRemoveCodeFromFlash();
   esp_restart();
 }
+
+/*JSON{
+ "type" : "staticmethod",
+ "class"  : "ESP32",
+ "ifdef" : "ESP32",
+ "name"   : "setOTAValid",
+ "generate" : "jswrap_ESP32_setOTAValid",
+ "params" : [
+   ["isValid", "bool", "Set whether this app is valid or not. If `isValid==false` the device will reboot." ]
+ ]
+}
+This function is useful for ESP32 [OTA Updates](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/ota.html)
+
+Normally Espruino is uploaded to the `factory` partition so this isn't so useful,
+but it is possible to upload Espruino to the `ota_0` partition (or ota_1 if a different table has been added).
+
+If this is the case, you can use this function to mark the currently running version of Espruino as good or bad.
+ * If set as valid, Espruino will continue running, and the fact that everything is ok is written to flash
+ * If set as invalid (false) Espruino will mark itself as not working properly and will reboot. The ESP32 bootloader
+ will then start and will load any other partition it can find that is marked as ok.
+*/
+void jswrap_ESP32_setOTAValid(bool isValid) {
+  if (isValid) esp_ota_mark_app_valid_cancel_rollback();
+  else esp_ota_mark_app_invalid_rollback_and_reboot();
+}
+

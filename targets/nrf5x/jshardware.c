@@ -95,6 +95,11 @@ void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info) {
 #include "jswrap_microbit.h"
 #endif
 
+#ifndef SAVE_ON_FLASH
+// Enable 7 bit UART (this must be done in software)
+#define ESPR_UART_7BIT 1
+#endif
+
 void WDT_IRQHandler() {
 }
 
@@ -418,6 +423,10 @@ typedef struct {
   uint8_t rxBuffer[2]; // 2 char buffer
   bool isSending;
   bool isInitialised;
+#ifdef ESPR_UART_7BIT
+  bool is7Bit;
+  uint8_t parity;
+#endif
   uint8_t txBuffer[1];
 } PACKED_FLAGS jshUARTState;
 static jshUARTState uart[USART_COUNT];
@@ -454,6 +463,29 @@ static void spiFlashRead(unsigned char *rx, unsigned int len) {
   }
 }
 
+#ifdef SPIFLASH_READ2X
+// Use MISO and MOSI to read data from flash (Dual Output Fast Read 0x3B)
+static void spiFlashRead2x(unsigned char *rx, unsigned int len) {
+  assert((uint32_t)pinInfo[SPIFLASH_PIN_MOSI].pin<32); // port 0
+  assert((uint32_t)pinInfo[SPIFLASH_PIN_MISO].pin<32); // port 0
+  NRF_GPIO_PIN_CNF((uint32_t)pinInfo[SPIFLASH_PIN_MOSI].pin, 0); // High-Z input
+  //#define NRF_GPIO_PIN_READ_FAST(PIN) ((NRF_P0->IN >> (PIN))&1)
+  //#define NRF_GPIO_PIN_CNF(PIN,value) NRF_P0->PIN_CNF[PIN]=value;
+  for (unsigned int i=0;i<len;i++) {
+    int result = 0;
+    #pragma GCC unroll 4
+    for (int bit=0;bit<4;bit++) {
+      NRF_GPIO_PIN_SET_FAST((uint32_t)pinInfo[SPIFLASH_PIN_SCK].pin);
+      uint32_t io = NRF_P0->IN;
+      result = (result<<2) | ((io>>(pinInfo[SPIFLASH_PIN_MISO].pin-1))&2) | ((io>>pinInfo[SPIFLASH_PIN_MOSI].pin)&1);
+      NRF_GPIO_PIN_CLEAR_FAST((uint32_t)pinInfo[SPIFLASH_PIN_SCK].pin);
+    }
+    rx[i] = result;
+  }
+  NRF_GPIO_PIN_CNF((uint32_t)pinInfo[SPIFLASH_PIN_MOSI].pin, 0x303); // high drive output
+}
+#endif
+
 static void spiFlashWrite(unsigned char *tx, unsigned int len) {
   for (unsigned int i=0;i<len;i++) {
     int data = tx[i];
@@ -464,10 +496,18 @@ static void spiFlashWrite(unsigned char *tx, unsigned int len) {
     }
   }
 }
+static void spiFlashWrite32(uint32_t data) {
+  for (int bit=31;bit>=0;bit--) {
+    NRF_GPIO_PIN_WRITE_FAST((uint32_t)pinInfo[SPIFLASH_PIN_MOSI].pin, data & 0x80000000 );
+    data<<=1;
+    NRF_GPIO_PIN_SET_FAST((uint32_t)pinInfo[SPIFLASH_PIN_SCK].pin);
+    NRF_GPIO_PIN_CLEAR_FAST((uint32_t)pinInfo[SPIFLASH_PIN_SCK].pin);
+  }
+}
 static void spiFlashWriteCS(unsigned char *tx, unsigned int len) {
   NRF_GPIO_PIN_CLEAR_FAST((uint32_t)pinInfo[SPIFLASH_PIN_CS].pin);
   spiFlashWrite(tx,len);
-  nrf_gpio_pin_set((uint32_t)pinInfo[SPIFLASH_PIN_CS].pin);
+  NRF_GPIO_PIN_SET_FAST((uint32_t)pinInfo[SPIFLASH_PIN_CS].pin);
 }
 /* Get SPI flash status bits:
 
@@ -1707,6 +1747,12 @@ void uart_startrx(int num) {
 void uart_starttx(int num) {
   int ch = jshGetCharToTransmit(EV_SERIAL1+num);
   if (ch >= 0) {
+#ifdef ESPR_UART_7BIT
+    if (uart[num].is7Bit) ch&=0x7F;
+    if (uart[num].parity) { // set parity (which is now in bit 8)
+      if (calculateParity(ch)==(uart[num].parity==2)) ch |= 0x80;
+    }
+#endif
     uart[num].isSending = true;
     uart[num].txBuffer[0] = ch;
     ret_code_t err_code = nrf_drv_uart_tx(&UART[num], uart[num].txBuffer, 1);
@@ -1720,6 +1766,19 @@ static void uart_event_handle(int num, nrf_drv_uart_event_t * p_event, void* p_c
       // Char received
       uint8_t ch = p_event->data.rxtx.p_data[0];
       nrf_drv_uart_rx(&UART[num], p_event->data.rxtx.p_data, 1);
+#ifdef ESPR_UART_7BIT
+      if (uart[num].is7Bit) {
+        bool parityBit = (ch&0x80) != 0;
+        ch&=0x7F;
+        if (uart[num].parity) { // check parity (which was in bit 8)
+          if ((calculateParity(ch)==parityBit)!=(uart[num].parity==2)) {
+            // parity error. Should we report it?
+            if (jshGetErrorHandlingEnabled(EV_SERIAL1+num))
+              jshPushIOEvent(IOEVENTFLAGS_SERIAL_TO_SERIAL_STATUS(EV_SERIAL1+num) | EV_SERIAL_STATUS_PARITY_ERR, 0);
+          }
+        }
+      }
+#endif
       jshPushIOCharEvent(EV_SERIAL1+num, (char)ch);
       jshHadEvent();
     } else if (p_event->type == NRF_DRV_UART_EVT_ERROR) {
@@ -1781,6 +1840,12 @@ void jshUSARTSetup(IOEventFlags device, JshUSARTInfo *inf) {
     return;
 
   unsigned int num = device-EV_SERIAL1;
+
+  if (uart[num].isInitialised) {
+    uart[num].isInitialised = false;
+    nrf_drv_uart_uninit(&UART[num]);
+  }
+
   nrf_uart_baudrate_t baud = (nrf_uart_baudrate_t)nrf_utils_get_baud_enum(inf->baudRate);
   if (baud==0)
     return jsError("Invalid baud rate %d", inf->baudRate);
@@ -1790,11 +1855,24 @@ void jshUSARTSetup(IOEventFlags device, JshUSARTInfo *inf) {
   jshSetFlowControlEnabled(device, inf->xOnXOff, inf->pinCTS);
   jshSetErrorHandlingEnabled(device, inf->errorHandling);
 
-  if (uart[num].isInitialised) {
-    uart[num].isInitialised = false;
-    nrf_drv_uart_uninit(&UART[num]);
-  }
+  if (inf->stopbits!=1)
+    return jsExceptionHere(JSET_INTERNALERROR, "Unsupported serial stopbits length.");
+
   uart[num].isInitialised = false;
+  if (inf->bytesize==8) {
+    if (inf->parity==1)
+      return jsExceptionHere(JSET_INTERNALERROR, "Odd parity not supported");
+#ifdef ESPR_UART_7BIT
+    uart[num].is7Bit = false;
+    uart[num].parity = 0;
+  } else if (inf->bytesize==7) {
+    uart[num].is7Bit = true;
+    uart[num].parity = inf->parity;
+    inf->parity = 0; // no parity bit for 7 bit output
+#endif
+  } else
+    return jsExceptionHere(JSET_INTERNALERROR, "Unsupported serial byte size.");
+
   JshPinFunction JSH_USART = JSH_USART1+(num<<JSH_SHIFT_TYPE);
 
   // APP_UART_INIT will set pins, but this ensures we know so can reset state later
@@ -2065,9 +2143,9 @@ static void twis_event_handler(nrf_drv_twis_evt_t const * const p_event)
     {
     case TWIS_EVT_READ_REQ:
         if (p_event->data.buf_req) {
-          JsVar *i2c = jsvObjectGetChild(execInfo.root,"I2C1",0);
+          JsVar *i2c = jsvObjectGetChildIfExists(execInfo.root,"I2C1");
           if (i2c) {
-            JsVar *buf = jsvObjectGetChild(i2c,"buffer",0);
+            JsVar *buf = jsvObjectGetChildIfExists(i2c,"buffer");
             size_t bufLen;
             char *bufPtr = jsvGetDataPointer(buf, &bufLen);
             if (bufPtr && bufLen>twisAddr)
@@ -2093,9 +2171,9 @@ static void twis_event_handler(nrf_drv_twis_evt_t const * const p_event)
           if (p_event->data.rx_amount>1) {
             jshPushIOEvent(EV_I2C1, twisAddr|((p_event->data.rx_amount-1)<<8)); // send event to indicate a write
             jshHadEvent();
-            JsVar *i2c = jsvObjectGetChild(execInfo.root,"I2C1",0);
+            JsVar *i2c = jsvObjectGetChildIfExists(execInfo.root,"I2C1");
             if (i2c) {
-              JsVar *buf = jsvObjectGetChild(i2c,"buffer",0);
+              JsVar *buf = jsvObjectGetChildIfExists(i2c,"buffer");
               size_t bufLen;
               char *bufPtr = jsvGetDataPointer(buf, &bufLen);
               for (unsigned int i=1;i<p_event->data.rx_amount;i++) {
@@ -2385,17 +2463,30 @@ void jshFlashRead(void * buf, uint32_t addr, uint32_t len) {
         || spiFlashLastAddress==0 
 #endif
        ) {
-      nrf_gpio_pin_set((uint32_t)pinInfo[SPIFLASH_PIN_CS].pin);
-      unsigned char b[4];
+      NRF_GPIO_PIN_SET_FAST((uint32_t)pinInfo[SPIFLASH_PIN_CS].pin);
+      uint32_t b;
       // Read
-      b[0] = 0x03;
-      b[1] = addr>>16;
-      b[2] = addr>>8;
-      b[3] = addr;
-      nrf_gpio_pin_clear((uint32_t)pinInfo[SPIFLASH_PIN_CS].pin);
-      spiFlashWrite(b,4);
+#ifdef SPIFLASH_READ2X
+      b = 0x3B000000; // uses MOSI to double-up data transfer
+#else
+      b = 0x03000000;
+#endif
+      b |= addr;
+      NRF_GPIO_PIN_CLEAR_FAST((uint32_t)pinInfo[SPIFLASH_PIN_CS].pin);
+      spiFlashWrite32(b);
+#ifdef SPIFLASH_READ2X
+      // Shift out dummy byte as fast as we can
+      for (int bit=0;bit<8;bit++) {
+        NRF_GPIO_PIN_SET_FAST((uint32_t)pinInfo[SPIFLASH_PIN_SCK].pin);
+        NRF_GPIO_PIN_CLEAR_FAST((uint32_t)pinInfo[SPIFLASH_PIN_SCK].pin);
+      }
+#endif
     }
+#ifdef SPIFLASH_READ2X
+    spiFlashRead2x((unsigned char*)buf,len);
+#else
     spiFlashRead((unsigned char*)buf,len);
+#endif
     spiFlashLastAddress = addr + len;
     return;
   }

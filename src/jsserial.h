@@ -12,10 +12,13 @@
  * ----------------------------------------------------------------------------
  */
 
+#ifndef JSSERIAL_H_
+#define JSSERIAL_H_
+
 #include "jshardware.h"
 
 typedef JshUSARTInfo serial_sender_data; // the larger of JshSPIInfo or IOEventFlags
-typedef void (*serial_sender)(unsigned char data, serial_sender_data *info);
+typedef void (*serial_sender)(int data, serial_sender_data *info);
 
 bool jsserialPopulateUSARTInfo(JshUSARTInfo *inf, JsVar *baud,  JsVar *options);
 
@@ -33,4 +36,4 @@ bool jsserialEventCallbackIdle();
 void jsserialEventCallback(bool state, IOEventFlags flags);
 
 
-
+#endif // JSSERIAL_H_
